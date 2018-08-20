@@ -8,17 +8,10 @@ die() {
     exit 1
 }
 
-if date -v 1d > /dev/null 2>&1;
-then BSD_DATE=true
-else BSD_DATE=false
-fi
 date_ics_fmt() {
     date_ics=$(echo $1 | cut -c-13 | sed 's/T/ /g')
     format=$2
-    if [ "$BSD_DATE" = "true" ]
-    then date -jf "%Y%m%dT%H%M %Z" "$date_ics UTC" "+$format"
-    else date -d "TZ=\"UTC\" $date_ics" +"$format"
-    fi
+    date -d "TZ=\"UTC\" $date_ics" +"$format"
 }
 
 if [ -z "$XDG_CACHE_HOME" ];
@@ -73,7 +66,7 @@ sync_cmd() {
 list_cmd() {
     [ -r $ENTRIES ] || die "no cache, use sync command"
     int_start=$(date -d "monday -1 week" +"%s")
-    int_end=$(date -d "monday 10 week" +"%s")
+    int_end=$(date -d "monday 2 week" +"%s")
     day_end=0
     while read start end summary; do
         start_unix=$(date_ics_fmt $start "%s")
@@ -82,14 +75,12 @@ list_cmd() {
             if [ "$day_end" -lt "$start_unix" ]; then
                 day=$(date -d "@$start_unix" +"%F")
                 day_end=$(date -d "$day 23:59" +"%s")
-                echo -e "$ISV_DAY_COL" \
-                    "\n$(date -d "$day" +"$ISV_DAY_FMT")" \
-                    "$NORMAL_COL"
+                echo -e "\n$ISV_DAY_COL$(date -d "$day" +"$ISV_DAY_FMT")"
             fi
             start_time=$(date_ics_fmt $start "$ISV_TIME_FMT")
             end_time=$(date_ics_fmt $end "$ISV_TIME_FMT")
             echo -e "$ISV_TIME_COL[$start_time-$end_time]" \
-                    "$ISV_SUM_COL$summary" |\
+                    "$ISV_SUM_COL$summary$NORMAL_COL" |\
                 fmt -sw 60 |\
                 sed '2,$s/^/            /g'
         fi
