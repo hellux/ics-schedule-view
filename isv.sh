@@ -112,17 +112,17 @@ list_cmd() {
     day_end=0
     week_end=0
     while read cal_num start end summary; do
-        end_unix=$(date_ics_fmt $end "%s")
-        [ "$int_end" -lt "$end_unix" ] && break
-        if [ "$int_start" -lt "$end_unix" ]; then
-            day=$(date -d "@$end_unix" +"%F")
-            if [ "$week_end" -lt "$end_unix" ]; then
-                days_rem=$(expr 6 - $(date -d "@$end_unix" +"%u"))
-                week_end=$(date -d "$day +${days_rem}days 23:59" +"%s")
-                week=$(date -d "@$end_unix" +"$ISV_WEEK_FMT")
+        start_unix=$(date_ics_fmt $start "%s")
+        [ "$int_end" -lt "$start_unix" ] && break
+        if [ "$int_start" -lt "$start_unix" ]; then
+            day=$(date -d "@$start_unix" +"%F")
+            if [ "$week_end" -le "$start_unix" ]; then
+                days_rem=$(expr 8 - $(date -d "@$start_unix" +"%u"))
+                week_end=$(date -d "$day +${days_rem}days" +"%s")
+                week=$(date -d "@$start_unix" +"$ISV_WEEK_FMT")
                 echo -e "\n${WEEK_COL}$week$NORMAL_COL"
             fi
-            if [ "$day_end" -lt "$end_unix" ]; then
+            if [ "$day_end" -lt "$start_unix" ]; then
                 day_end=$(date -d "$day +1day" +"%s")
                 echo -e "$DAY_COL$(date -d "$day"\
                        +"$ISV_DAY_FMT")$NORMAL_COL"
