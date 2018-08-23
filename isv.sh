@@ -27,13 +27,14 @@ then CFG_DIR="$HOME/.config/ics-schedule-view"
 else CFG_DIR="$XDG_CONFIG_HOME/ics-schedule-view"
 fi
 
-NORMAL_COL="\033[0m"
 [ -z "$ISV_DAY_FMT" ] && ISV_DAY_FMT="%A, %B %d:"
 [ -z "$ISV_TIME_FMT" ] && ISV_TIME_FMT="%H%M"
-[ -z "$ISV_DAY_COL" ] && ISV_DAY_COL="\033[1;2m"
-[ -z "$ISV_WEEK_COL" ] && ISV_WEEK_COL="\033[1m"
-[ -z "$ISV_TIME_COL" ] && ISV_TIME_COL="\033[1;32m"
-[ -z "$ISV_SUM_COL" ] && ISV_SUM_COL="$NORMAL_COL"
+
+NORMAL_COL="\033[0m"
+DAY_COL="\033[0;1m"
+WEEK_COL="\033[1;31m"
+SUM_COL="$NORMAL_COL"
+TIME_COL_START="32"
 
 CALS_FILE=$CFG_DIR/calendars
 ENTRIES=$CCH_DIR/entries
@@ -48,19 +49,21 @@ commands:
 sync_cmd() {
     [ ! -r $CALS_FILE ] && die "no file with calendars found at $CALS_FILE"
     mkdir -p $RNT_DIR
-    curl -s $(cat $CALS_FILE) | tr -d '\r' > $RNT_DIR/schedule.ics
-
     mkdir -p $CCH_DIR
-    AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
-    $1 == "DTSTART" { start=$2 }
-    $1 == "DTEND" { end=$2 }
-    $1 == "SUMMARY" { rs=true; summary=$2 }
-    NF == 1 && rs == true { summary=summary substr($1,2) } # read multiline summary
-    NF == 2 { rs=false } # colon -> end read summary
-    $1 == "END" { print start,end,summary }'
-    awk "$AWK_PARSE" $RNT_DIR/schedule.ics |\
-        tr -d '\' 2>/dev/null |\
-        sort > $ENTRIES
+    cal_num=0
+    while read url tags; do
+        AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
+        $1 == "DTSTART" { start=$2 }
+        $1 == "DTEND" { end=$2 }
+        $1 == "SUMMARY" { rs=true; summary=$2 }
+        NF == 1 && rs == true { summary=summary substr($1,2) } # read multiline summary
+        NF == 2 { rs=false } # colon -> end read summary
+        $1 == "END" { print "'$tags'","'$cal_num'",start,end,summary }'
+        curl -s $url | tr -d '\r' > $RNT_DIR/schedule.ics
+        awk "$AWK_PARSE" $RNT_DIR/schedule.ics |\
+            tr -d '\' 2>/dev/null
+        cal_num=$(expr $cal_num + 1)
+    done < $CALS_FILE | sort -k2 > $ENTRIES
     rm -rf $RNT_DIR
 }
 
@@ -68,7 +71,7 @@ list_cmd() {
     week_count=1
     full_week=false
     OPTIND=1
-    while getopts n: flag; do
+    while getopts fn: flag; do
         case "$flag" in
             f) full_week=true;;
             n) week_count=$OPTARG;;
@@ -76,16 +79,31 @@ list_cmd() {
         esac
     done
     shift $((OPTIND-1))
+    tags=$@
     [ "$week_count" -gt 0 ] 2>/dev/null || die "invalid week count -- $days"
     [ -r $ENTRIES ] || die "no cache, use sync command"
     if [ "$full_week" = "true" ];
     then int_start=$(date -d "monday -1 week" +"%s")
     else int_start=$(date +"%s")
     fi
+
+    mkdir -p $RNT_DIR
+
+    if [ -z "$tags" ]; then
+        cat $ENTRIES
+    else
+        for tag in $tags; do
+            AWK_FILTER='BEGIN { FS="\t" }
+            $1 ~ /( |^)'$tag'( |$)/ { print }'
+            awk "$AWK_FILTER" $ENTRIES
+        done
+        exit
+    fi | cut -f2-5 | sort -k2 | uniq > $RNT_DIR/entries
+    
     int_end=$(date -d "monday $(expr $week_count - 1) week" +"%s")
     day_end=0
     week_end=0
-    while read start end summary; do
+    while read cal_num start end summary; do
         end_unix=$(date_ics_fmt $end "%s")
         [ "$int_end" -lt "$end_unix" ] && break
         if [ "$int_start" -lt "$end_unix" ]; then
@@ -94,21 +112,23 @@ list_cmd() {
                 days_rem=$(expr 6 - $(date -d "@$end_unix" +"%u"))
                 week_end=$(date -d "$day +${days_rem}days" +"%s")
                 week=$(date -d "@$end_unix" +"%V")
-                echo -e "\n${ISV_WEEK_COL}Week $week$NORMAL_COL"
+                echo -e "\n${WEEK_COL}Week $week$NORMAL_COL"
             fi
             if [ "$day_end" -lt "$end_unix" ]; then
                 day_end=$(date -d "$day +1day" +"%s")
-                echo -e "$ISV_DAY_COL$(date -d "$day"\
+                echo -e "$DAY_COL$(date -d "$day"\
                        +"$ISV_DAY_FMT")$NORMAL_COL"
             fi
             start_time=$(date_ics_fmt $start "$ISV_TIME_FMT")
             end_time=$(date_ics_fmt $end "$ISV_TIME_FMT")
-            echo -e "$ISV_TIME_COL[$start_time-$end_time]" \
-                    "$ISV_SUM_COL$summary$NORMAL_COL" |\
+            color="\033[1;$(expr $TIME_COL_START + $cal_num)m"
+            echo -e "$color[$start_time-$end_time]" \
+                    "$SUM_COL$summary$NORMAL_COL" |\
                 fmt -sw 60 |\
                 sed '2,$s/^/            /g'
         fi
-    done < $ENTRIES | tail -n +2
+    done < $RNT_DIR/entries | tail -n +2
+    #rm -rf $RNT_DIR
 }
  
 command=$1
