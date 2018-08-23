@@ -30,7 +30,8 @@ fi
 NORMAL_COL="\033[0m"
 [ -z "$ISV_DAY_FMT" ] && ISV_DAY_FMT="%A, %B %d:"
 [ -z "$ISV_TIME_FMT" ] && ISV_TIME_FMT="%H%M"
-[ -z "$ISV_DAY_COL" ] && ISV_DAY_COL="\033[1m"
+[ -z "$ISV_DAY_COL" ] && ISV_DAY_COL="\033[1;2m"
+[ -z "$ISV_WEEK_COL" ] && ISV_WEEK_COL="\033[1m"
 [ -z "$ISV_TIME_COL" ] && ISV_TIME_COL="\033[1;32m"
 [ -z "$ISV_SUM_COL" ] && ISV_SUM_COL="$NORMAL_COL"
 
@@ -64,18 +65,41 @@ sync_cmd() {
 }
 
 list_cmd() {
+    week_count=1
+    full_week=false
+    OPTIND=1
+    while getopts n: flag; do
+        case "$flag" in
+            f) full_week=true;;
+            n) week_count=$OPTARG;;
+            [?]) die "invalid flag -- $OPTARG"
+        esac
+    done
+    shift $((OPTIND-1))
+    [ "$week_count" -gt 0 ] 2>/dev/null || die "invalid week count -- $days"
     [ -r $ENTRIES ] || die "no cache, use sync command"
-    int_start=$(date -d "monday -1 week" +"%s")
-    int_end=$(date -d "monday 2 week" +"%s")
+    if [ "$full_week" = "true" ];
+    then int_start=$(date -d "monday -1 week" +"%s")
+    else int_start=$(date +"%s")
+    fi
+    int_end=$(date -d "monday $(expr $week_count - 1) week" +"%s")
     day_end=0
+    week_end=0
     while read start end summary; do
-        start_unix=$(date_ics_fmt $start "%s")
-        [ "$int_end" -lt "$start_unix" ] && break
-        if [ "$int_start" -lt "$start_unix" ]; then
-            if [ "$day_end" -lt "$start_unix" ]; then
-                day=$(date -d "@$start_unix" +"%F")
-                day_end=$(date -d "$day 23:59" +"%s")
-                echo -e "\n$ISV_DAY_COL$(date -d "$day" +"$ISV_DAY_FMT")"
+        end_unix=$(date_ics_fmt $end "%s")
+        [ "$int_end" -lt "$end_unix" ] && break
+        if [ "$int_start" -lt "$end_unix" ]; then
+            day=$(date -d "@$end_unix" +"%F")
+            if [ "$week_end" -lt "$end_unix" ]; then
+                days_rem=$(expr 6 - $(date -d "@$end_unix" +"%u"))
+                week_end=$(date -d "$day +${days_rem}days" +"%s")
+                week=$(date -d "@$end_unix" +"%V")
+                echo -e "\n${ISV_WEEK_COL}Week $week$NORMAL_COL"
+            fi
+            if [ "$day_end" -lt "$end_unix" ]; then
+                day_end=$(date -d "$day +1day" +"%s")
+                echo -e "$ISV_DAY_COL$(date -d "$day"\
+                       +"$ISV_DAY_FMT")$NORMAL_COL"
             fi
             start_time=$(date_ics_fmt $start "$ISV_TIME_FMT")
             end_time=$(date_ics_fmt $end "$ISV_TIME_FMT")
