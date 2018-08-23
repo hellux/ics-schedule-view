@@ -27,14 +27,15 @@ then CFG_DIR="$HOME/.config/ics-schedule-view"
 else CFG_DIR="$XDG_CONFIG_HOME/ics-schedule-view"
 fi
 
+[ -z "$ISV_WEEK_FMT" ] && ISV_WEEK_FMT="Week %V"
 [ -z "$ISV_DAY_FMT" ] && ISV_DAY_FMT="%A, %B %d:"
 [ -z "$ISV_TIME_FMT" ] && ISV_TIME_FMT="%H%M"
 
 NORMAL_COL="\033[0m"
 DAY_COL="\033[0;1m"
-WEEK_COL="\033[1;31m"
+WEEK_COL="\033[1;3m"
 SUM_COL="$NORMAL_COL"
-TIME_COL_START="32"
+TIME_COL_START="40"
 
 CALS_FILE=$CFG_DIR/calendars
 ENTRIES=$CCH_DIR/entries
@@ -63,16 +64,18 @@ sync_cmd() {
         awk "$AWK_PARSE" $RNT_DIR/schedule.ics |\
             tr -d '\' 2>/dev/null
         cal_num=$(expr $cal_num + 1)
-    done < $CALS_FILE | sort -k2 > $ENTRIES
+    done < $CALS_FILE | sort -k2 | uniq > $ENTRIES
     rm -rf $RNT_DIR
 }
 
 list_cmd() {
     week_count=1
     full_week=false
+    day=
     OPTIND=1
-    while getopts fn: flag; do
+    while getopts d:fn: flag; do
         case "$flag" in
+            d) day=$OPTARG;;
             f) full_week=true;;
             n) week_count=$OPTARG;;
             [?]) die "invalid flag -- $OPTARG"
@@ -82,9 +85,15 @@ list_cmd() {
     tags=$@
     [ "$week_count" -gt 0 ] 2>/dev/null || die "invalid week count -- $days"
     [ -r $ENTRIES ] || die "no cache, use sync command"
-    if [ "$full_week" = "true" ];
-    then int_start=$(date -d "monday -1 week" +"%s")
-    else int_start=$(date +"%s")
+    if [ -n "$day" ]; then
+        int_start=$(date -d "$day 0:00" +"%s");
+        int_end=$(date -d "$day 23:59" +"%s");
+    else
+        if [ "$full_week" = "true" ];
+        then int_start=$(date -d "monday -1 week" +"%s")
+        else int_start=$(date +"%s")
+        fi
+        int_end=$(date -d "monday $(expr $week_count - 1) week" +"%s")
     fi
 
     mkdir -p $RNT_DIR
@@ -98,9 +107,8 @@ list_cmd() {
             awk "$AWK_FILTER" $ENTRIES
         done
         exit
-    fi | cut -f2-5 | sort -k2 | uniq > $RNT_DIR/entries
+    fi | cut -f2-5 | sort -k2 > $RNT_DIR/entries
     
-    int_end=$(date -d "monday $(expr $week_count - 1) week" +"%s")
     day_end=0
     week_end=0
     while read cal_num start end summary; do
@@ -110,9 +118,9 @@ list_cmd() {
             day=$(date -d "@$end_unix" +"%F")
             if [ "$week_end" -lt "$end_unix" ]; then
                 days_rem=$(expr 6 - $(date -d "@$end_unix" +"%u"))
-                week_end=$(date -d "$day +${days_rem}days" +"%s")
-                week=$(date -d "@$end_unix" +"%V")
-                echo -e "\n${WEEK_COL}Week $week$NORMAL_COL"
+                week_end=$(date -d "$day +${days_rem}days 23:59" +"%s")
+                week=$(date -d "@$end_unix" +"$ISV_WEEK_FMT")
+                echo -e "\n${WEEK_COL}$week$NORMAL_COL"
             fi
             if [ "$day_end" -lt "$end_unix" ]; then
                 day_end=$(date -d "$day +1day" +"%s")
@@ -121,14 +129,18 @@ list_cmd() {
             fi
             start_time=$(date_ics_fmt $start "$ISV_TIME_FMT")
             end_time=$(date_ics_fmt $end "$ISV_TIME_FMT")
-            color="\033[1;$(expr $TIME_COL_START + $cal_num)m"
-            echo -e "$color[$start_time-$end_time]" \
+            if [ "$cal_num" -le 6 ];
+            then col_num="$(expr 30 + $cal_num)"
+            else col_num="$(expr 34 + $cal_num)"
+            fi
+            color="\033[1;${col_num}m"
+            echo -e "$color[$start_time-$end_time]$NORMAL_COL" \
                     "$SUM_COL$summary$NORMAL_COL" |\
                 fmt -sw 60 |\
                 sed '2,$s/^/            /g'
         fi
     done < $RNT_DIR/entries | tail -n +2
-    #rm -rf $RNT_DIR
+    rm -rf $RNT_DIR
 }
  
 command=$1
