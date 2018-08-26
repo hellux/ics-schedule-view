@@ -41,8 +41,8 @@ DAY_COL='\033[0;1m'
 WEEK_COL='\033[1;3m'
 SUM_COL="$NORMAL_COL"
 
-CALS_FILE=$CFG_DIR/calendars
-ENTRIES=$CCH_DIR/entries
+CALS_FILE="$CFG_DIR/calendars"
+ENTRIES="$CCH_DIR/entries"
 
 USAGE="usage: isv <command> [<args>]
 
@@ -54,22 +54,26 @@ commands:
 sync_cmd() {
     [ ! -r "$CALS_FILE" ] && die 'no file with calendars found at %s' \
         "$CALS_FILE"
+
     mkdir -p "$RNT_DIR"
     mkdir -p "$CCH_DIR"
+
+    AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
+    $1 == "DTSTART" { start=$2 }
+    $1 == "DTEND" { end=$2 }
+    $1 == "SUMMARY" { rs=true; summary=$2 }
+    NF == 1 && rs == true { summary=summary substr($1,2) } # read summary
+    NF == 2 { rs=false } # colon -> end read summary
+    $1 == "END" { print t,cn,start,end,summary }'
+
     cal_num=0
     while read -r url tags; do
-        AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
-        $1 == "DTSTART" { start=$2 }
-        $1 == "DTEND" { end=$2 }
-        $1 == "SUMMARY" { rs=true; summary=$2 }
-        NF == 1 && rs == true { summary=summary substr($1,2) } # read summary
-        NF == 2 { rs=false } # colon -> end read summary
-        $1 == "END" { print "'$tags'","'$cal_num'",start,end,summary }'
         curl -s "$url" | tr -d '\r' > "$RNT_DIR/schedule.ics"
-        awk "$AWK_PARSE" "$RNT_DIR/schedule.ics" |\
+        awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/schedule.ics" |\
             tr -d '\' 2>/dev/null
         cal_num=$((cal_num + 1))
-    done < "$CALS_FILE" | sort -k2 | uniq > "$ENTRIES"
+    done < "$CALS_FILE" > "$RNT_DIR/entries_new"
+    cat "$ENTRIES" "$RNT_DIR/entries_new" | sort -k2 | uniq > $ENTRIES
     rm -rf "$RNT_DIR"
 }
 
@@ -93,7 +97,7 @@ list_cmd() {
     [ -r "$ENTRIES" ] || die "no cache, use sync command"
     if [ -n "$day" ]; then
         int_start=$(date -d "$day 0:00" +"%s");
-        int_end=$(date -d "$day 23:59" +"%s");
+        int_end=$(date -d "$day +1 day" +"%s");
     else
         if [ "$full_week" = "true" ];
         then int_start=$(date -d "monday -1 week" +"%s")
@@ -101,6 +105,7 @@ list_cmd() {
         fi
         int_end=$(date -d "monday $((week_count - 1)) week" +"%s")
     fi
+    date -d "@$int_start"
 
     mkdir -p "$RNT_DIR"
 
