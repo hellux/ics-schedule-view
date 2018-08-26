@@ -18,6 +18,9 @@ date_ics_fmt() {
     format=$2
     date -d "TZ=\"UTC\" $date_ics" +"$format"
 }
+rm_comments() {
+    sed 's:#.*$::g;/^\-*$/d;s/ *$//' "$1"
+}
 
 if [ -z "$XDG_CACHE_HOME" ];
 then CCH_DIR="$HOME/.cache/ics-schedule-view"
@@ -52,11 +55,13 @@ commands:
     list    ls l  -- display events from calendars"
 
 sync_cmd() {
-    [ ! -r "$CALS_FILE" ] && die 'no file with calendars found at %s' \
-        "$CALS_FILE"
+    [ ! -r "$CALS_FILE" ] && die 'no file with calendars at %s' "$CALS_FILE"
 
     mkdir -p "$RNT_DIR"
     mkdir -p "$CCH_DIR"
+
+    rm_comments "$CALS_FILE" > "$RNT_DIR/cals"
+    touch "$ENTRIES"
 
     AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
     $1 == "DTSTART" { start=$2 }
@@ -72,8 +77,9 @@ sync_cmd() {
         awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/schedule.ics" |\
             tr -d '\' 2>/dev/null
         cal_num=$((cal_num + 1))
-    done < "$CALS_FILE" > "$RNT_DIR/entries_new"
+    done < "$RNT_DIR/cals" > "$RNT_DIR/entries_new"
     cat "$ENTRIES" "$RNT_DIR/entries_new" | sort -k2 | uniq > $ENTRIES
+
     rm -rf "$RNT_DIR"
 }
 
@@ -96,7 +102,7 @@ list_cmd() {
         die "invalid week count -- $week_count"
     [ -r "$ENTRIES" ] || die "no cache, use sync command"
     if [ -n "$day" ]; then
-        int_start=$(date -d "$day 0:00" +"%s");
+        int_start=$(date -d "$day" +"%s");
         int_end=$(date -d "$day +1 day" +"%s");
     else
         if [ "$full_week" = "true" ];
@@ -105,7 +111,6 @@ list_cmd() {
         fi
         int_end=$(date -d "monday $((week_count - 1)) week" +"%s")
     fi
-    date -d "@$int_start"
 
     mkdir -p "$RNT_DIR"
 
