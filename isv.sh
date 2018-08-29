@@ -61,7 +61,6 @@ sync_cmd() {
     mkdir -p "$CCH_DIR"
 
     rm_comments "$CALS_FILE" > "$RNT_DIR/cals"
-    touch "$ENTRIES"
 
     AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
     $1 == "DTSTART" { start=$2 }
@@ -77,14 +76,14 @@ sync_cmd() {
         awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/schedule.ics" |\
             tr -d '\' 2>/dev/null
         cal_num=$((cal_num + 1))
-    done < "$RNT_DIR/cals" > "$RNT_DIR/entries_new"
-    cat "$ENTRIES" "$RNT_DIR/entries_new" | sort -k2 | uniq > $ENTRIES
+    done < "$RNT_DIR/cals" | sort -k2 | uniq > $ENTRIES
 
     rm -rf "$RNT_DIR"
 }
 
 list_cmd() {
     week_count=1
+    tags=default
     full_week=false
     day=
     OPTIND=1
@@ -97,10 +96,12 @@ list_cmd() {
         esac
     done
     shift $((OPTIND-1))
-    tags="$*"
+    [ -n "$*" ] && tags="$*"
     [ "$week_count" -gt 0 ] 2>/dev/null || \
         die "invalid week count -- $week_count"
     [ -r "$ENTRIES" ] || die "no cache, use sync command"
+
+    # determine interval
     if [ -n "$day" ]; then
         int_start=$(date -d "$day" +"%s");
         int_end=$(date -d "$day +1 day" +"%s");
@@ -114,6 +115,7 @@ list_cmd() {
 
     mkdir -p "$RNT_DIR"
 
+    # filter out tags
     if [ -z "$tags" ]; then
         cat "$ENTRIES"
     else
@@ -125,6 +127,7 @@ list_cmd() {
         exit
     fi | cut -f2-5 | sort -k2 > "$RNT_DIR/entries"
     
+    # display
     day_end=0
     week_end=0
     while read -r cal_num start end summary; do
@@ -157,6 +160,7 @@ list_cmd() {
                 sed '2,$s/^/            /g'
         fi
     done < "$RNT_DIR/entries" | tail -n +2
+
     rm -rf "$RNT_DIR"
 }
  
