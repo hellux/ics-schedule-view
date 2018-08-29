@@ -62,6 +62,14 @@ sync_cmd() {
 
     rm_comments "$CALS_FILE" > "$RNT_DIR/cals"
 
+    # fetch ics files
+    cal_num=0
+    curl -s $(while read -r url tags; do
+        printf '%s -o %s/%s ' "$url" "$RNT_DIR" "$cal_num"
+        cal_num=$((cal_num + 1))
+    done < "$RNT_DIR/cals")
+
+    # parse events from ics files
     AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
     $1 == "DTSTART" { start=$2 }
     $1 == "DTEND" { end=$2 }
@@ -69,11 +77,9 @@ sync_cmd() {
     NF == 1 && rs == true { summary=summary substr($1,2) } # read summary
     NF == 2 { rs=false } # colon -> end read summary
     $1 == "END" { print t,cn,start,end,summary }'
-
     cal_num=0
     while read -r url tags; do
-        curl -s "$url" | tr -d '\r' > "$RNT_DIR/schedule.ics"
-        awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/schedule.ics" |\
+        awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/$cal_num" |\
             tr -d '\' 2>/dev/null
         cal_num=$((cal_num + 1))
     done < "$RNT_DIR/cals" | sort -k2 | uniq > $ENTRIES
@@ -83,9 +89,9 @@ sync_cmd() {
 
 list_cmd() {
     week_count=1
-    tags=default
     full_week=false
     day=
+
     OPTIND=1
     while getopts d:fn: flag; do
         case "$flag" in
@@ -96,10 +102,11 @@ list_cmd() {
         esac
     done
     shift $((OPTIND-1))
-    [ -n "$*" ] && tags="$*"
     [ "$week_count" -gt 0 ] 2>/dev/null || \
         die "invalid week count -- $week_count"
     [ -r "$ENTRIES" ] || die "no cache, use sync command"
+
+    tags=${*:-default}
 
     # determine interval
     if [ -n "$day" ]; then
