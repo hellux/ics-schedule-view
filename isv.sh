@@ -88,37 +88,33 @@ sync_cmd() {
 }
 
 list_cmd() {
-    week_count=1
-    full_week=false
-    day=
-
+    workdays=2
     OPTIND=1
     while getopts d:fn: flag; do
         case "$flag" in
-            d) day=$OPTARG;;
-            f) full_week=true;;
-            n) week_count=$OPTARG;;
+            d) day_in=$OPTARG;;
+            n) workdays=$OPTARG;;
             [?]) die "invalid flag -- $OPTARG"
         esac
     done
     shift $((OPTIND-1))
-    [ "$week_count" -gt 0 ] 2>/dev/null || \
-        die "invalid week count -- $week_count"
+    [ "$workdays" -gt 0 ] 2>/dev/null || die "invalid day count -- $days"
     [ -r "$ENTRIES" ] || die "no cache, use sync command"
-
+    day=$(date -d "$day_in" +"%F")
+    [ -z "$day" ] && die 'invalid day -- %s' "$day_in"
     tags=${*:-default}
 
+    # skip weekend
+    days=0
+    weekday=$(date -d "$day" +"%u")
+    while [ $workdays -gt 0 ]; do
+        [ $weekday -lt 6 ] && workdays=$((workdays-1))
+        weekday=$(((weekday)%7+1))
+        days=$((days+1))
+    done
     # determine interval
-    if [ -n "$day" ]; then
-        int_start=$(date -d "$day" +"%s");
-        int_end=$(date -d "$day +1 day" +"%s");
-    else
-        if [ "$full_week" = "true" ];
-        then int_start=$(date -d "monday -1 week" +"%s")
-        else int_start=$(date +"%s")
-        fi
-        int_end=$(date -d "monday $((week_count - 1)) week" +"%s")
-    fi
+    int_start=$(date -d "$day" +"%s");
+    int_end=$(date -d "$day +$days days" +"%s");
 
     mkdir -p "$RNT_DIR"
 
@@ -142,14 +138,14 @@ list_cmd() {
         [ "$int_end" -lt "$start_unix" ] && break
         if [ "$int_start" -lt "$start_unix" ]; then
             day=$(date -d "@$start_unix" +"%F")
-            if [ "$week_end" -le "$start_unix" ]; then
-                day_num=$(date -d "@$start_unix" +"%u")
-                days_rem=$((8 - day_num))
-                week_end=$(date -d "$day +${days_rem}days" +"%s")
-                week=$(date -d "@$start_unix" +"$ISV_WEEK_FMT")
-                printf '\n'$WEEK_COL'%s'$NORMAL_COL'\n' "$week"
-            fi
             if [ "$day_end" -lt "$start_unix" ]; then
+                if [ "$week_end" -le "$start_unix" ]; then
+                    day_num=$(date -d "@$start_unix" +"%u")
+                    days_rem=$((8 - day_num))
+                    week_end=$(date -d "$day +${days_rem}days" +"%s")
+                    week=$(date -d "@$start_unix" +"$ISV_WEEK_FMT")
+                    printf '\n'$WEEK_COL'%s'$NORMAL_COL'\n' "$week"
+                fi
                 day_end=$(date -d "$day +1day" +"%s")
                 printf ''$DAY_COL'%s'$NORMAL_COL'\n' \
                     "$(date -d "$day" +"$ISV_DAY_FMT")"
