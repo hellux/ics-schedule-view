@@ -80,7 +80,7 @@ sync_cmd() {
     cal_num=0
     while read -r url tags; do
         awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/$cal_num" |\
-            tr -d '\' 2>/dev/null
+            tr -d "$(printf '\r')\\" 2>/dev/null
         cal_num=$((cal_num + 1))
     done < "$RNT_DIR/cals" | sort -k2 | uniq > $ENTRIES
 
@@ -162,7 +162,7 @@ list_cmd() {
             printf "$color%s$NORMAL_COL $SUM_COL%s%s$NORMAL_COL" \
                         "$timestr" "$summary" |\
                 fmt -sw 60 |\
-                sed "2,\$s/^/$margin /g"
+                sed "2,\$s/^/$margin /"
         fi
     done < "$RNT_DIR/entries" | tail -n +2
 
