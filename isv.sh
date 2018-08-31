@@ -156,15 +156,17 @@ list_cmd() {
             fi
             start_time=$(date_ics_fmt "$start" "$ISV_TIME_FMT")
             end_time=$(date_ics_fmt "$end" "$ISV_TIME_FMT")
+            timestr=$(printf '[%s-%s]' "$start_time" "$end_time")
             if [ "$cal_num" -le 6 ];
             then col_num="$((30 + cal_num))"
             else col_num="$((34 + cal_num))"
             fi
             color='\033[1;'${col_num}'m'
-            printf "$color[%s-%s]$NORMAL_COL $SUM_COL%s%s$NORMAL_COL" \
-                        "$start_time" "$end_time" "$summary" |\
+            margin="$(for i in $(seq ${#timestr}); do printf ' '; done)"
+            printf "$color%s$NORMAL_COL $SUM_COL%s%s$NORMAL_COL" \
+                        "$timestr" "$summary" |\
                 fmt -sw 60 |\
-                sed '2,$s/^/            /g'
+                sed "2,\$s/^/$margin /g"
         fi
     done < "$RNT_DIR/entries" | tail -n +2
 
