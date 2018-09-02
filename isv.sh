@@ -82,36 +82,37 @@ sync_cmd() {
         awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/$cal_num" |\
             tr -d "$(printf '\r')\\" 2>/dev/null
         cal_num=$((cal_num + 1))
-    done < "$RNT_DIR/cals" | sort -k2 | uniq > $ENTRIES
+    done < "$RNT_DIR/cals" | sort -k2 | uniq > "$ENTRIES"
 
     rm -rf "$RNT_DIR"
 }
 
 list_cmd() {
-    workdays=2
+    weekdays=2
+    days=
     OPTIND=1
-    while getopts d:fn: flag; do
+    while getopts d:fn:N: flag; do
         case "$flag" in
             d) day_in=$OPTARG;;
-            n) workdays=$OPTARG;;
+            n) weekdays=$OPTARG;;
+            N) days=$OPTARG;;
             [?]) die "invalid flag -- $OPTARG"
         esac
     done
     shift $((OPTIND-1))
-    [ "$workdays" -gt 0 ] 2>/dev/null || die "invalid day count -- $days"
+    [ "$weekdays" -gt 0 ] 2>/dev/null || die "invalid day count -- $weekdays"
     [ -r "$ENTRIES" ] || die "no cache, use sync command"
     day=$(date -d "$day_in" +"%F")
     [ -z "$day" ] && die 'invalid day -- %s' "$day_in"
     tags=${*:-default}
 
-    # skip weekend
-    days=0
-    weekday=$(date -d "$day" +"%u")
-    while [ $workdays -gt 0 ]; do
-        [ $weekday -lt 6 ] && workdays=$((workdays-1))
-        weekday=$(((weekday)%7+1))
-        days=$((days+1))
-    done
+    # skip weekends if N flag not used
+    if [ -z $days ]; then
+        dow=$(date -d "$day" +"%u")
+        days=$((weekdays + (dow+weekdays%5)/7*2-dow/7 + (weekdays-1)/5*2))
+    elif ! [ "$days" -gt 0 ] 2>/dev/null; then
+        die "invalid day count -- $days"
+    fi
     # determine interval
     int_start=$(date -d "$day" +"%s");
     int_end=$(date -d "$day +$days days" +"%s");
@@ -144,10 +145,10 @@ list_cmd() {
                     days_rem=$((8 - day_num))
                     week_end=$(date -d "$day +${days_rem}days" +"%s")
                     week=$(date -d "@$start_unix" +"$ISV_WEEK_FMT")
-                    printf '\n'$WEEK_COL'%s'$NORMAL_COL'\n' "$week"
+                    printf "\\n$WEEK_COL%s$NORMAL_COL\\n" "$week"
                 fi
                 day_end=$(date -d "$day +1day" +"%s")
-                printf ''$DAY_COL'%s'$NORMAL_COL'\n' \
+                printf "$DAY_COL%s$NORMAL_COL\\n" \
                     "$(date -d "$day" +"$ISV_DAY_FMT")"
             fi
             start_time=$(date_ics_fmt "$start" "$ISV_TIME_FMT")
@@ -158,10 +159,10 @@ list_cmd() {
             else col_num="$((34 + cal_num))"
             fi
             color='\033[1;'${col_num}'m'
-            margin="$(for i in $(seq ${#timestr}); do printf ' '; done)"
+            margin="$(for _ in $(seq ${#timestr}); do printf ' '; done)"
             printf "$color%s$NORMAL_COL $SUM_COL%s%s$NORMAL_COL" \
                         "$timestr" "$summary" |\
-                fmt -sw 60 |\
+                fmt -sw $((70-${#margin})) |\
                 sed "2,\$s/^/$margin /"
         fi
     done < "$RNT_DIR/entries" | tail -n +2
