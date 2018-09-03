@@ -88,11 +88,13 @@ sync_cmd() {
 }
 
 list_cmd() {
+    sync=false
     weekdays=2
     days=
     OPTIND=1
-    while getopts d:fn:N: flag; do
+    while getopts sd:fn:N: flag; do
         case "$flag" in
+            s) sync=true;;
             d) day_in=$OPTARG;;
             n) weekdays=$OPTARG;;
             N) days=$OPTARG;;
@@ -116,6 +118,8 @@ list_cmd() {
     # determine interval
     int_start=$(date -d "$day" +"%s");
     int_end=$(date -d "$day +$days days" +"%s");
+
+    [ "$sync" = "true" ] && sync_cmd
 
     mkdir -p "$RNT_DIR"
 
