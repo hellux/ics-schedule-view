@@ -111,7 +111,7 @@ list_cmd() {
     # skip weekends if N flag not used
     if [ -z $days ]; then
         dow=$(date -d "$day" +"%u")
-        days=$((weekdays + (dow+weekdays%5)/7*2-dow/7 + (weekdays-1)/5*2))
+        days=$((weekdays+(dow+(weekdays-1)%5+1)/7*2-dow/7+(weekdays-1)/5*2))
     elif ! [ "$days" -gt 0 ] 2>/dev/null; then
         die "invalid day count -- $days"
     fi
