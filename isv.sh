@@ -73,9 +73,9 @@ sync_cmd() {
     AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
     $1 == "DTSTART" { start=$2 }
     $1 == "DTEND" { end=$2 }
-    $1 == "SUMMARY" { rs=true; summary=$2 }
-    NF == 1 && rs == true { summary=summary substr($1,2) } # read summary
-    NF == 2 { rs=false } # colon -> end read summary
+    $1 == "SUMMARY" { rs="true"; summary=$2 }
+    NF == 1 && rs { summary=summary substr($1,2) } # read summary
+    NF >= 2 { rs="" } # colon -> end read summary
     $1 == "END" { print t,cn,start,end,summary }'
     cal_num=0
     while read -r url tags; do
@@ -84,7 +84,7 @@ sync_cmd() {
         cal_num=$((cal_num + 1))
     done < "$RNT_DIR/cals" | sort -k2 | uniq > "$ENTRIES"
 
-    rm -rf "$RNT_DIR"
+    #rm -rf "$RNT_DIR"
 }
 
 list_cmd() {
