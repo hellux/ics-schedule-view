@@ -102,6 +102,30 @@ sync_cmd() {
     #rm -rf "$RNT_DIR"
 }
 
+list_disp_week() {
+    week_number=$(date -d "$1" +"$ISV_WEEK_FMT")
+    printf "\\n$WEEK_COL%s$NORMAL_COL\\n" "$week_number"
+}
+list_disp_day() {
+    printf "$DAY_COL%s$NORMAL_COL\\n" \
+        "$(date -d "$day" +"$ISV_DAY_FMT")"
+}
+list_disp_event() {
+    cal_num=$1;start=$2;end=$3;summary=$4
+    start_time=$(date_ics_fmt "$start" "$ISV_TIME_FMT")
+    end_time=$(date_ics_fmt "$end" "$ISV_TIME_FMT")
+    timestr=$(printf '[%s-%s]' "$start_time" "$end_time")
+    if [ "$cal_num" -le 6 ];
+    then col_num="$((30 + cal_num))"
+    else col_num="$((34 + cal_num))"
+    fi
+    color='\033[1;'${col_num}'m'
+    margin="$(for _ in $(seq ${#timestr}); do printf ' '; done)"
+    printf "$color%s$NORMAL_COL $SUM_COL%s%s$NORMAL_COL" \
+                "$timestr" "$summary" |\
+        fmt -sw $((70-${#margin})) |\
+        sed "2,\$s/^/$margin /"
+}
 list_cmd() {
     sync=false
     complement=false
@@ -158,13 +182,13 @@ list_cmd() {
         for i in $(seq $days); do
             if [ "$(date -d"$day_curr" +"%u")" -gt "5" ]; then
                 # fill weekends
-                event_entry "$day_curr" "$day_curr +1 day" "dummy"
+                event_entry "$day_curr" "$day_curr +1day" "dummy"
             else
                 # fill morning and evening on weekdays
                 event_entry "$day_curr" "$day_curr $ISV_COMPL_START" "dummy"
-                event_entry "$day_curr $ISV_COMPL_END" "$day_curr +1 day" "dummy"
+                event_entry "$day_curr $ISV_COMPL_END" "$day_curr +1day" "dummy"
             fi
-            day_curr="$(date -d"$day_curr +1 day" +"%F")"
+            day_curr="$(date -d"$day_curr +1day" +"%F")"
         done > "$RNT_DIR/entries_dummies"
         sort -k2 -o "$RNT_DIR/entries" \
             "$RNT_DIR/entries" "$RNT_DIR/entries_dummies"
@@ -185,7 +209,7 @@ list_cmd() {
         mv "$RNT_DIR/entries_compl" "$RNT_DIR/entries"
     fi
     
-    # display
+    # display events
     day_end=0
     week_end=0
     while read -r cal_num start end summary; do
@@ -195,29 +219,14 @@ list_cmd() {
             day=$(date -d "@$event_start" +"%F")
             if [ "$day_end" -lt "$event_start" ]; then
                 if [ "$week_end" -le "$event_start" ]; then
-                    day_num=$(date -d "@$event_start" +"%u")
-                    days_rem=$((8 - day_num))
+                    list_disp_week "@$event_start"
+                    days_rem="$((8-$(date -d "@$event_start" +"%u")))"
                     week_end=$(date -d "$day +${days_rem}days" +"%s")
-                    week=$(date -d "@$event_start" +"$ISV_WEEK_FMT")
-                    printf "\\n$WEEK_COL%s$NORMAL_COL\\n" "$week"
                 fi
                 day_end=$(date -d "$day +1day" +"%s")
-                printf "$DAY_COL%s$NORMAL_COL\\n" \
-                    "$(date -d "$day" +"$ISV_DAY_FMT")"
+                list_disp_day "$day"
             fi
-            start_time=$(date_ics_fmt "$start" "$ISV_TIME_FMT")
-            end_time=$(date_ics_fmt "$end" "$ISV_TIME_FMT")
-            timestr=$(printf '[%s-%s]' "$start_time" "$end_time")
-            if [ "$cal_num" -le 6 ];
-            then col_num="$((30 + cal_num))"
-            else col_num="$((34 + cal_num))"
-            fi
-            color='\033[1;'${col_num}'m'
-            margin="$(for _ in $(seq ${#timestr}); do printf ' '; done)"
-            printf "$color%s$NORMAL_COL $SUM_COL%s%s$NORMAL_COL" \
-                        "$timestr" "$summary" |\
-                fmt -sw $((70-${#margin})) |\
-                sed "2,\$s/^/$margin /"
+            list_disp_event "$cal_num" "$start" "$end" "$summary"
         fi
     done < "$RNT_DIR/entries" | tail -n +2
 
