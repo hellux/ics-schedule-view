@@ -22,6 +22,15 @@ rm_comments() {
     sed 's:#.*$::g;/^\-*$/d;s/ *$//' "$1"
 }
 
+event_entry() {
+    event_start_unix=$(date -d"$1" +"%s")
+    event_end_unix=$(date -d"$2" +"%s")
+    event_name=$3
+    start_ics=$(TZ=UTC date -d"@$event_start_unix" +"$ICS_TIME_FMT")
+    end_ics=$(TZ=UTC date -d"@$event_end_unix" +"$ICS_TIME_FMT")
+    printf "%d\t%s\t%s\t%s\n" "0" "$start_ics" "$end_ics" "$event_name"
+}
+
 if [ -z "$XDG_CACHE_HOME" ];
 then CCH_DIR="$HOME/.cache/ics-schedule-view"
 else CCH_DIR="$XDG_CACHE_HOME/ics-schedule-view"
@@ -38,11 +47,17 @@ fi
 [ -z "$ISV_WEEK_FMT" ] && ISV_WEEK_FMT="Week %V"
 [ -z "$ISV_DAY_FMT" ] && ISV_DAY_FMT="%A, %B %d:"
 [ -z "$ISV_TIME_FMT" ] && ISV_TIME_FMT="%H%M"
+[ -z "$ISV_FREE_STR" ] && ISV_FREE_STR="Free time"
+[ -z "$ISV_COMPL_START" ] && ISV_COMPL_START="8:00"
+[ -z "$ISV_COMPL_END" ] && ISV_COMPL_END="17:00"
+[ -z "$ISV_COMPL_MIN" ] && ISV_COMPL_MIN="60"
 
 NORMAL_COL='\033[0m'
 DAY_COL='\033[0;1m'
 WEEK_COL='\033[1;3m'
 SUM_COL="$NORMAL_COL"
+
+ICS_TIME_FMT="%Y%m%dT%H%M%SZ"
 
 CALS_FILE="$CFG_DIR/calendars"
 ENTRIES="$CCH_DIR/entries"
@@ -89,12 +104,14 @@ sync_cmd() {
 
 list_cmd() {
     sync=false
+    complement=false
     weekdays=2
     days=
     OPTIND=1
-    while getopts sd:fn:N: flag; do
+    while getopts sd:fn:N:c flag; do
         case "$flag" in
             s) sync=true;;
+            c) complement=true;;
             d) day_in=$OPTARG;;
             n) weekdays=$OPTARG;;
             N) days=$OPTARG;;
@@ -134,6 +151,39 @@ list_cmd() {
         done
         exit
     fi | cut -f2-5 | sort -k2 > "$RNT_DIR/entries"
+
+    if [ "$complement" = "true" ]; then
+        # add dummy events outside interval
+        day_curr="$day"
+        for i in $(seq $days); do
+            if [ "$(date -d"$day_curr" +"%u")" -gt "5" ]; then
+                # fill weekends
+                event_entry "$day_curr" "$day_curr +1 day" "dummy"
+            else
+                # fill morning and evening on weekdays
+                event_entry "$day_curr" "$day_curr $ISV_COMPL_START" "dummy"
+                event_entry "$day_curr $ISV_COMPL_END" "$day_curr +1 day" "dummy"
+            fi
+            day_curr="$(date -d"$day_curr +1 day" +"%F")"
+        done > "$RNT_DIR/entries_dummies"
+        sort -k2 -o "$RNT_DIR/entries" \
+            "$RNT_DIR/entries" "$RNT_DIR/entries_dummies"
+
+        # find gaps in schedule
+        busy_end=$(date -d"$day" +"%s")
+        while read -r cal_num start end summary; do
+            event_start=$(date_ics_fmt "$start" "%s")
+            event_end=$(date_ics_fmt "$end" "%s")
+            [ "$int_end" -lt "$event_start" ] && break
+            if [ "$event_start" -ge "$((busy_end+ISV_COMPL_MIN*60))" ]; then
+                event_entry "@$busy_end" "@$event_start" "$ISV_FREE_STR"
+            fi
+            [ "$event_end" -gt "$busy_end" ] && busy_end="$event_end"
+        done < "$RNT_DIR/entries" > "$RNT_DIR/entries_compl"
+
+        # replace entries with gaps
+        mv "$RNT_DIR/entries_compl" "$RNT_DIR/entries"
+    fi
     
     # display
     day_end=0
