@@ -189,16 +189,16 @@ list_cmd() {
     day_end=0
     week_end=0
     while read -r cal_num start end summary; do
-        start_unix=$(date_ics_fmt "$start" "%s")
-        [ "$int_end" -lt "$start_unix" ] && break
-        if [ "$int_start" -lt "$start_unix" ]; then
-            day=$(date -d "@$start_unix" +"%F")
-            if [ "$day_end" -lt "$start_unix" ]; then
-                if [ "$week_end" -le "$start_unix" ]; then
-                    day_num=$(date -d "@$start_unix" +"%u")
+        event_start=$(date_ics_fmt "$start" "%s")
+        [ "$int_end" -lt "$event_start" ] && break
+        if [ "$int_start" -lt "$event_start" ]; then
+            day=$(date -d "@$event_start" +"%F")
+            if [ "$day_end" -lt "$event_start" ]; then
+                if [ "$week_end" -le "$event_start" ]; then
+                    day_num=$(date -d "@$event_start" +"%u")
                     days_rem=$((8 - day_num))
                     week_end=$(date -d "$day +${days_rem}days" +"%s")
-                    week=$(date -d "@$start_unix" +"$ISV_WEEK_FMT")
+                    week=$(date -d "@$event_start" +"$ISV_WEEK_FMT")
                     printf "\\n$WEEK_COL%s$NORMAL_COL\\n" "$week"
                 fi
                 day_end=$(date -d "$day +1day" +"%s")
