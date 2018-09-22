@@ -73,10 +73,11 @@ sync_cmd() {
     AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
     $1 == "DTSTART" { start=$2 }
     $1 == "DTEND" { end=$2 }
+    $1 == "LOCATION" { loc=$3 }
     $1 == "SUMMARY" { rs="true"; summary=$2 }
     NF == 1 && rs { summary=summary substr($1,2) } # read summary
     NF >= 2 { rs="" } # colon -> end read summary
-    $1 == "END" { print t,cn,start,end,summary }'
+    $1 == "END" { print t,cn,start,end,summary loc }'
     cal_num=0
     while read -r url tags; do
         awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/$cal_num" |\
