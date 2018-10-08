@@ -100,7 +100,7 @@ sync_cmd() {
         cal_num=$((cal_num + 1))
     done < "$RNT_DIR/cals" | sort -k2 | uniq > "$ENTRIES"
 
-    #rm -rf "$RNT_DIR"
+    rm -rf "$RNT_DIR"
 }
 
 list_disp_week() {
@@ -174,7 +174,6 @@ list_cmd() {
             $1 ~ /( |^)'$tag'( |$)/ { print }'
             awk "$AWK_FILTER" "$ENTRIES"
         done
-        exit
     fi | cut -f2-5 | sort -k2 > "$RNT_DIR/entries"
 
     if [ "$complement" = "true" ]; then
@@ -214,6 +213,7 @@ list_cmd() {
     day_end=0
     week_end=0
     while read -r cal_num start end summary; do
+        [ -z "$start" ] && continue;
         event_start=$(date_ics_fmt "$start" "%s")
         [ "$int_end" -lt "$event_start" ] && break
         if [ "$int_start" -lt "$event_start" ]; then
