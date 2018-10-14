@@ -91,7 +91,7 @@ sync_cmd() {
     $1 == "LOCATION" { loc=$3 }
     $1 == "SUMMARY" { rs="true"; summary=$2 }
     NF == 1 && rs { summary=summary substr($1,2) } # read summary
-    NF >= 2 { rs="" } # colon -> end read summary
+    $1 != "SUMMARY" && NF >= 2 { rs="" } # colon -> end read summary
     $1 == "END" { print t,cn,start,end,summary loc }'
     cal_num=0
     while read -r url tags; do
@@ -109,7 +109,7 @@ list_disp_week() {
 }
 list_disp_day() {
     printf "$DAY_COL%s$NORMAL_COL\\n" \
-        "$(date -d "$day" +"$ISV_DAY_FMT")"
+        "$(date -d "$1" +"$ISV_DAY_FMT")"
 }
 list_disp_event() {
     cal_num=$1;start=$2;end=$3;summary=$4
