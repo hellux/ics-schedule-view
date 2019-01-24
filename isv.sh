@@ -72,7 +72,6 @@ commands:
 sync_cmd() {
     [ ! -r "$CALS_FILE" ] && die 'no file with calendars at %s' "$CALS_FILE"
 
-    mkdir -p "$RNT_DIR"
     mkdir -p "$CCH_DIR"
 
     rm_comments "$CALS_FILE" > "$RNT_DIR/cals"
@@ -86,21 +85,19 @@ sync_cmd() {
 
     # parse events from ics files
     AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
-    $1 == "DTSTART" { start=$2 }
-    $1 == "DTEND" { end=$2 }
-    $1 == "LOCATION" { loc=$3 }
+    $1 ~ "DTSTART*" { start=$2 }
+    $1 ~ "DTEND*" { end=$2 }
+    $1 == "LOCATION" { loc=$(NF) }
     $1 == "SUMMARY" { rs="true"; summary=$2 }
     NF == 1 && rs { summary=summary substr($1,2) } # read summary
     $1 != "SUMMARY" && NF >= 2 { rs="" } # colon -> end read summary
-    $1 == "END" { print t,cn,start,end,summary loc }'
+    $1 == "END" { print t,cn,start,end,summary " " loc }'
     cal_num=0
     while read -r url tags; do
         awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/$cal_num" |\
             tr -d "$(printf '\r')\\" 2>/dev/null
         cal_num=$((cal_num + 1))
     done < "$RNT_DIR/cals" | sort -k2 | uniq > "$ENTRIES"
-
-    rm -rf "$RNT_DIR"
 }
 
 list_disp_week() {
@@ -163,7 +160,6 @@ list_cmd() {
 
     [ "$sync" = "true" ] && sync_cmd
 
-    mkdir -p "$RNT_DIR"
 
     # filter out tags
     if [ -z "$tags" ]; then
@@ -230,9 +226,9 @@ list_cmd() {
             list_disp_event "$cal_num" "$start" "$end" "$summary"
         fi
     done < "$RNT_DIR/entries" | tail -n +2
-
-    rm -rf "$RNT_DIR"
 }
+
+mkdir -p "$RNT_DIR"
  
 command=$1
 [ -z "$command" ] && list_cmd && exit 0
@@ -243,3 +239,5 @@ case "$command" in
     l|ls|list) list_cmd "$@";;
     *) die 'invalid command -- %s\n\n%s' "$command" "$USAGE";;
 esac
+
+#rm -rf "$RNT_DIR"
