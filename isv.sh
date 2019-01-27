@@ -28,7 +28,7 @@ event_entry() {
     event_name=$3
     start_ics=$(TZ=UTC date -d"@$event_start_unix" +"$ICS_TIME_FMT")
     end_ics=$(TZ=UTC date -d"@$event_end_unix" +"$ICS_TIME_FMT")
-    printf "%d\t%s\t%s\t%s\n" "0" "$start_ics" "$end_ics" "$event_name"
+    printf "%d\t%s\t%s\t0\t%s\n" "0" "$start_ics" "$end_ics" "$event_name"
 }
 
 if [ -z "$XDG_CACHE_HOME" ];
@@ -77,25 +77,29 @@ sync_cmd() {
     rm_comments "$CALS_FILE" > "$RNT_DIR/cals"
 
     # fetch ics files
-    cal_num=0
-    curl -s $(while read -r url tags; do
+    cal_num=1
+    while read -r url tags; do
         printf '%s -o %s/%s ' "$url" "$RNT_DIR" "$cal_num"
         cal_num=$((cal_num + 1))
-    done < "$RNT_DIR/cals")
+    done < "$RNT_DIR/cals" > "$RNT_DIR/urls"
+    curl -fs $(cat "$RNT_DIR/urls")
+    [ "$?" -ne 0 ] && die "fetch failed"
 
     # parse events from ics files
-    AWK_PARSE='BEGIN { FS=":"; OFS="\t" }
-    $1 ~ "DTSTART*" { start=$2 }
+    AWK_PARSE='BEGIN { fullday=0; FS=":"; OFS="\t" }
+    $1 == "DTSTART" { start=$2 }
+    $1 == "DTSTART;VALUE=DATE" { start=$2; fullday=1 }
     $1 ~ "DTEND*" { end=$2 }
     $1 == "LOCATION" { loc=$(NF) }
     $1 == "SUMMARY" { rs="true"; summary=$2 }
     NF == 1 && rs { summary=summary substr($1,2) } # read summary
     $1 != "SUMMARY" && NF >= 2 { rs="" } # colon -> end read summary
-    $1 == "END" { print t,cn,start,end,summary " " loc }'
-    cal_num=0
+    $1 == "END" { print t,cn,start,end,fullday,summary " " loc; fullday=0 }'
+    cal_num=1
     while read -r url tags; do
-        awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" "$RNT_DIR/$cal_num" |\
-            tr -d "$(printf '\r')\\" 2>/dev/null
+        entry=$(awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" \
+            "$RNT_DIR/$cal_num" | tr -d "$(printf '\r')\\" 2>/dev/null)
+            [ -n "$(echo "$entry" | cut -f3)" ] && echo "$entry"
         cal_num=$((cal_num + 1))
     done < "$RNT_DIR/cals" | sort -k2 | uniq > "$ENTRIES"
 }
@@ -109,7 +113,8 @@ list_disp_day() {
         "$(date -d "$1" +"$ISV_DAY_FMT")"
 }
 list_disp_event() {
-    cal_num=$1;start=$2;end=$3;summary=$4
+    cal_num=$1;start=$2;end=$3
+    summary=$(echo $4 | tr -s " ")
     start_time=$(date_ics_fmt "$start" "$ISV_TIME_FMT")
     end_time=$(date_ics_fmt "$end" "$ISV_TIME_FMT")
     timestr=$(printf '[%s-%s]' "$start_time" "$end_time")
@@ -127,13 +132,15 @@ list_disp_event() {
 list_cmd() {
     sync=false
     complement=false
+    freetime=false
     weekdays=2
     days=
     OPTIND=1
-    while getopts sd:fn:N:c flag; do
+    while getopts scfd:n:N: flag; do
         case "$flag" in
             s) sync=true;;
             c) complement=true;;
+            f) complement=true; freetime=true;;
             d) day_in=$OPTARG;;
             n) weekdays=$OPTARG;;
             N) days=$OPTARG;;
@@ -142,10 +149,11 @@ list_cmd() {
     done
     shift $((OPTIND-1))
     [ "$weekdays" -gt 0 ] 2>/dev/null || die "invalid day count -- $weekdays"
+    [ "$sync" = "true" ] && sync_cmd
     [ -r "$ENTRIES" ] || die "no cache, use sync command"
     day=$(date -d "$day_in" +"%F")
     [ -z "$day" ] && die 'invalid day -- %s' "$day_in"
-    tags=${*:-default}
+    tags="${@:-default}"
 
     # skip weekends if N flag not used
     if [ -z $days ]; then
@@ -158,19 +166,12 @@ list_cmd() {
     int_start=$(date -d "$day" +"%s");
     int_end=$(date -d "$day +$days days" +"%s");
 
-    [ "$sync" = "true" ] && sync_cmd
-
-
     # filter out tags
-    if [ -z "$tags" ]; then
-        cat "$ENTRIES"
-    else
-        for tag in $tags; do
-            AWK_FILTER='BEGIN { FS="\t" }
-            $1 ~ /( |^)'$tag'( |$)/ { print }'
-            awk "$AWK_FILTER" "$ENTRIES"
-        done
-    fi | cut -f2-5 | sort -k2 > "$RNT_DIR/entries"
+    for tag in $tags; do
+        AWK_FILTER='BEGIN { FS="\t" }
+        $1 ~ /( |^)'$tag'( |$)/ { print }'
+        awk "$AWK_FILTER" "$ENTRIES"
+    done | cut -f2- | sort -k2 > "$RNT_DIR/entries"
 
     if [ "$complement" = "true" ]; then
         # add dummy events outside interval
@@ -186,12 +187,13 @@ list_cmd() {
             fi
             day_curr="$(date -d"$day_curr +1day" +"%F")"
         done > "$RNT_DIR/entries_dummies"
-        sort -k2 -o "$RNT_DIR/entries" \
-            "$RNT_DIR/entries" "$RNT_DIR/entries_dummies"
+        sort -k2 "$RNT_DIR/entries_dummies" "$RNT_DIR/entries" \
+            > "$RNT_DIR/entries_all"
 
         # find gaps in schedule
         busy_end=$(date -d"$day" +"%s")
-        while read -r cal_num start end summary; do
+        while read -r cal_num start end fullday summary; do
+            [ "$fullday" -eq "1" ] && continue
             event_start=$(date_ics_fmt "$start" "%s")
             event_end=$(date_ics_fmt "$end" "%s")
             [ "$int_end" -lt "$event_start" ] && break
@@ -199,16 +201,20 @@ list_cmd() {
                 event_entry "@$busy_end" "@$event_start" "$ISV_FREE_STR"
             fi
             [ "$event_end" -gt "$busy_end" ] && busy_end="$event_end"
-        done < "$RNT_DIR/entries" > "$RNT_DIR/entries_compl"
+        done < "$RNT_DIR/entries_all" > "$RNT_DIR/entries_compl"
 
-        # replace entries with gaps
-        mv "$RNT_DIR/entries_compl" "$RNT_DIR/entries"
+        if [ "$freetime" = "true" ]; then
+            cat "$RNT_DIR/entries_compl" >> "$RNT_DIR/entries"
+            sort -k2 -o "$RNT_DIR/entries" "$RNT_DIR/entries"
+        else
+            cp "$RNT_DIR/entries_compl" "$RNT_DIR/entries"
+        fi
     fi
     
     # display events
     day_end=0
     week_end=0
-    while read -r cal_num start end summary; do
+    while read -r cal_num start end fullday summary; do
         [ -z "$start" ] && continue;
         event_start=$(date_ics_fmt "$start" "%s")
         [ "$int_end" -lt "$event_start" ] && break
