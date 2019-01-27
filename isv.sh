@@ -105,25 +105,17 @@ sync_cmd() {
 }
 
 calcol() {
+    FG_START=31;COLCOUNT=7
     cal_num=$1
-    if [ "$cal_num" -le 6 ]; then
-        bold=1
-        col_num="$((30+cal_num))"
-    elif [ "$cal_num" -le 13 ]; then
-        bold=1
-        col_num="$((34+cal_num))"
-    elif [ "$cal_num" -le 20 ]; then
-        bold=0
-        col_num="$((17+cal_num))"
-    elif [ "$cal_num" -le 27 ]; then
-        bold=0
-        col_num="$((20+cal_num))"
-    else
-        bold=1
-        col_num=1
-    fi
-    printf "\033[$bold;${col_num}m"
+    cat=$((cal_num/COLCOUNT))
+    col=$((cal_num%COLCOUNT))
+    bold=$(((cat+1)%2))
+    background=$((cat/2))
+    code="$((FG_START+10*background+col))"
+    [ "$cat" -eq "0" ] && code=$((code-1))
+    printf "\033[$bold;${code}m"
 }
+
 list_disp_week() {
     week_number=$(date -d "$1" +"$ISV_WEEK_FMT")
     printf "\\n$WEEK_COL%s$NORMAL_COL\\n" "$week_number"
@@ -133,16 +125,19 @@ list_disp_day() {
         "$(date -d "$1" +"$ISV_DAY_FMT")"
 }
 list_disp_event() {
-    cal_num=$1;start=$2;end=$3
-    summary=$(echo $4 | tr -s " ")
-    start_time=$(date_ics_fmt "$start" "$ISV_TIME_FMT")
-    end_time=$(date_ics_fmt "$end" "$ISV_TIME_FMT")
-    timestr=$(printf '[%s-%s]' "$start_time" "$end_time")
-    margin="$(for _ in $(seq ${#timestr}); do printf ' '; done)"
+    if [ "$fullday" -eq "1" ]; then
+        timestr="•"
+    else
+        start_time=$(date_ics_fmt "$start" "$ISV_TIME_FMT")
+        end_time=$(date_ics_fmt "$end" "$ISV_TIME_FMT")
+        timestr=$(printf '[%s-%s]' "$start_time" "$end_time")
+    fi
+    marglen=${#timestr}
+    margin="$(printf "%${marglen}s")"
     color=$(calcol $cal_num)
     printf "$color%s$NORMAL_COL $SUM_COL%s%s$NORMAL_COL" \
                 "$timestr" "$summary" |\
-        fmt -sw $((70-${#margin})) |\
+        fmt -sw $((70-$marglen)) |\
         sed "2,\$s/^/$margin /"
 }
 list_cmd() {
@@ -231,6 +226,7 @@ list_cmd() {
     day_end=0
     week_end=0
     while read -r cal_num start end fullday summary; do
+        summary=$(echo $summary | tr -s " ")
         [ -z "$start" ] && continue;
         event_start=$(date_ics_fmt "$start" "%s")
         [ "$int_end" -lt "$event_start" ] && break
@@ -245,7 +241,7 @@ list_cmd() {
                 day_end=$(date -d "$day +1day" +"%s")
                 list_disp_day "$day"
             fi
-            list_disp_event "$cal_num" "$start" "$end" "$summary"
+            list_disp_event
         fi
     done < "$RNT_DIR/entries" | tail -n +2
 }
@@ -262,4 +258,4 @@ case "$command" in
     *) die 'invalid command -- %s\n\n%s' "$command" "$USAGE";;
 esac
 
-#rm -rf "$RNT_DIR"
+rm -rf "$RNT_DIR"
