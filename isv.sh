@@ -104,6 +104,26 @@ sync_cmd() {
     done < "$RNT_DIR/cals" | sort -k2 | uniq > "$ENTRIES"
 }
 
+calcol() {
+    cal_num=$1
+    if [ "$cal_num" -le 6 ]; then
+        bold=1
+        col_num="$((30+cal_num))"
+    elif [ "$cal_num" -le 13 ]; then
+        bold=1
+        col_num="$((34+cal_num))"
+    elif [ "$cal_num" -le 20 ]; then
+        bold=0
+        col_num="$((17+cal_num))"
+    elif [ "$cal_num" -le 27 ]; then
+        bold=0
+        col_num="$((20+cal_num))"
+    else
+        bold=1
+        col_num=1
+    fi
+    printf "\033[$bold;${col_num}m"
+}
 list_disp_week() {
     week_number=$(date -d "$1" +"$ISV_WEEK_FMT")
     printf "\\n$WEEK_COL%s$NORMAL_COL\\n" "$week_number"
@@ -118,12 +138,8 @@ list_disp_event() {
     start_time=$(date_ics_fmt "$start" "$ISV_TIME_FMT")
     end_time=$(date_ics_fmt "$end" "$ISV_TIME_FMT")
     timestr=$(printf '[%s-%s]' "$start_time" "$end_time")
-    if [ "$cal_num" -le 6 ];
-    then col_num="$((30 + cal_num))"
-    else col_num="$((34 + cal_num))"
-    fi
-    color='\033[1;'${col_num}'m'
     margin="$(for _ in $(seq ${#timestr}); do printf ' '; done)"
+    color=$(calcol $cal_num)
     printf "$color%s$NORMAL_COL $SUM_COL%s%s$NORMAL_COL" \
                 "$timestr" "$summary" |\
         fmt -sw $((70-${#margin})) |\
