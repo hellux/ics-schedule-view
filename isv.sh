@@ -52,10 +52,12 @@ fi
 [ -z "$ISV_COMPL_END" ] && ISV_COMPL_END="17:00"
 [ -z "$ISV_COMPL_MIN" ] && ISV_COMPL_MIN="60"
 
-NORMAL_COL='\033[0m'
-DAY_COL='\033[0;1m'
-WEEK_COL='\033[1;3m'
-SUM_COL="$NORMAL_COL"
+WIDTH=60
+
+NRMCOL='\033[0m'
+DAYCOL='\033[0;1m'
+WEKCOL='\033[1;3m'
+SUMCOL="$NRMCOL"
 
 ICS_TIME_FMT="%Y%m%dT%H%M%SZ"
 
@@ -118,10 +120,10 @@ calcol() {
 
 list_disp_week() {
     week_number=$(date -d "$1" +"$ISV_WEEK_FMT")
-    printf "\\n$WEEK_COL%s$NORMAL_COL\\n" "$week_number"
+    printf "\\n$WEKCOL%s$NRMCOL\\n" "$week_number"
 }
 list_disp_day() {
-    printf "$DAY_COL%s$NORMAL_COL\\n" \
+    printf "$DAYCOL%s$NRMCOL\\n" \
         "$(date -d "$1" +"$ISV_DAY_FMT")"
 }
 list_disp_event() {
@@ -134,11 +136,11 @@ list_disp_event() {
     fi
     marglen=${#timestr}
     margin="$(printf "%${marglen}s")"
-    color=$(calcol $cal_num)
-    printf "$color%s$NORMAL_COL $SUM_COL%s%s$NORMAL_COL" \
-                "$timestr" "$summary" |\
-        fmt -sw $((70-$marglen)) |\
-        sed "2,\$s/^/$margin /"
+    col=$(calcol $cal_num)
+    summary="$(echo $summary |\
+               fmt -sw $((WIDTH-marglen)) |\
+               sed "2,\$s/^/$margin /")"
+    printf "$col%s $SUMCOL%s$NRMCOL\n" "$timestr" "$summary"
 }
 list_cmd() {
     sync=false
