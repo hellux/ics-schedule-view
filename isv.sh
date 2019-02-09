@@ -88,18 +88,21 @@ sync_cmd() {
 
     # parse events from ics files
     AWK_PARSE='BEGIN { fullday=0; FS=":"; OFS="\t" }
+    substr($1,1,1) != " " { rs=""; rd="" }
     $1 == "DTSTART" { start=$2 }
     $1 == "DTSTART;VALUE=DATE" { start=$2; fullday=1 }
     $1 ~ "DTEND*" { end=$2 }
-    $1 == "LOCATION" { loc=$(NF) }
-    $1 == "SUMMARY" { rs="true"; summary=$2 }
-    NF == 1 && rs { summary=summary substr($1,2) } # read summary
-    $1 != "SUMMARY" && NF >= 2 { rs="" } # colon -> end read summary
-    $1 == "END" { print t,cn,start,end,fullday,summary " " loc; fullday=0 }'
+    $1 == "LOCATION" { $1=""; loc=$(NF) }
+    $1 == "SUMMARY" { rs="true"; $1=""; summary=$0 }
+    $1 == "DESCRIPTION" { rd="true"; $1=""; desc=$0 }
+    substr($1,1,1) == " " && rs { summary=summary substr($0,2) }
+    substr($1,1,1) == " " && rd { desc=desc substr($0,2) }
+    $1 == "END" { print t,cn,start,end,fullday,summary " " loc, desc;
+                  fullday=0 }'
     cal_num=1
     while read -r url tags; do
         entry=$(awk -v"t=$tags" -v"cn=$cal_num" "$AWK_PARSE" \
-            "$RNT_DIR/$cal_num" | tr -d "$(printf '\r')\\" 2>/dev/null)
+            "$RNT_DIR/$cal_num" | sed 's/\\n/ /g' | tr -d "$(printf '\r')\\" 2>/dev/null)
             [ -n "$(echo "$entry" | cut -f3)" ] && echo "$entry"
         cal_num=$((cal_num + 1))
     done < "$RNT_DIR/cals" | sort -k2 | uniq > "$ENTRIES"
@@ -142,20 +145,30 @@ list_disp_event() {
     summary="$(echo $summary |\
                fmt -sw $((WIDTH-marglen)) |\
                sed "2,\$s/^/$margin /")"
-    printf "$col%s$NRMCOL %s\n" "$timestr" "$summary"
+    if [ "$long" = "true" ]; then
+        desc="$(echo $desc |\
+                fmt -sw $((WIDTH-marglen)) |\
+                sed "s/^/$margin /")"
+    else
+        desc=""
+    fi
+    printf "$col%s$NRMCOL %s\n%s" "$timestr" "$summary" "$desc"
+    [ "-n" "$desc" ] && printf "\n"
 }
 list_cmd() {
     sync=false
     complement=false
     freetime=false
+    long=false
     weekdays=2
     days=
     OPTIND=1
-    while getopts scfd:n:N: flag; do
+    while getopts scfld:n:N: flag; do
         case "$flag" in
             s) sync=true;;
             c) complement=true;;
             f) complement=true; freetime=true;;
+            l) long=true;;
             d) day_in=$OPTARG;;
             n) weekdays=$OPTARG;;
             N) days=$OPTARG;;
@@ -207,7 +220,7 @@ list_cmd() {
 
         # find gaps in schedule
         busy_end=$(date -d"$day" +"%s")
-        while read -r cal_num start end fullday summary; do
+        while read -r cal_num start end fullday _; do
             [ "$fullday" -eq "1" ] && continue
             event_start=$(date_ics_fmt "$start" "%s")
             event_end=$(date_ics_fmt "$end" "%s")
@@ -229,8 +242,10 @@ list_cmd() {
     # display events
     day_end=0
     week_end=0
-    while read -r cal_num start end fullday summary; do
+    IFS="$(printf '\t')"
+    while read -r cal_num start end fullday summary desc; do
         summary=$(echo $summary | tr -s " ")
+        desc=$(echo $desc | tr -s " ")
         [ -z "$start" ] && continue;
         event_start=$(date_ics_fmt "$start" "%s")
         [ "$int_end" -lt "$event_start" ] && break
