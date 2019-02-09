@@ -45,7 +45,7 @@ else CFG_DIR="$XDG_CONFIG_HOME/ics-schedule-view"
 fi
 
 [ -z "$ISV_WEEK_FMT" ] && ISV_WEEK_FMT="Week %V"
-[ -z "$ISV_DAY_FMT" ] && ISV_DAY_FMT="%A, %B %d:"
+[ -z "$ISV_DAY_FMT" ] && ISV_DAY_FMT="%A, %B %d"
 [ -z "$ISV_TIME_FMT" ] && ISV_TIME_FMT="%H%M"
 [ -z "$ISV_FREE_STR" ] && ISV_FREE_STR="Free time"
 [ -z "$ISV_COMPL_START" ] && ISV_COMPL_START="8:00"
@@ -57,7 +57,6 @@ WIDTH=60
 NRMCOL='\033[0m'
 DAYCOL='\033[0;1m'
 WEKCOL='\033[1;3m'
-SUMCOL="$NRMCOL"
 
 ICS_TIME_FMT="%Y%m%dT%H%M%SZ"
 
@@ -123,8 +122,11 @@ list_disp_week() {
     printf "\\n$WEKCOL%s$NRMCOL\\n" "$week_number"
 }
 list_disp_day() {
-    printf "$DAYCOL%s$NRMCOL\\n" \
-        "$(date -d "$1" +"$ISV_DAY_FMT")"
+    daystr="$(date -d "$1" +"$ISV_DAY_FMT")"
+    if [ "$(date -d "$1" +"%Y%m%d")" = "$(date +"%Y%m%d")" ]; then
+        daystr="[ $daystr ]"
+    fi
+    printf "$DAYCOL%s$NRMCOL\\n" "$daystr"
 }
 list_disp_event() {
     if [ "$fullday" -eq "1" ]; then
@@ -140,7 +142,7 @@ list_disp_event() {
     summary="$(echo $summary |\
                fmt -sw $((WIDTH-marglen)) |\
                sed "2,\$s/^/$margin /")"
-    printf "$col%s $SUMCOL%s$NRMCOL\n" "$timestr" "$summary"
+    printf "$col%s$NRMCOL %s\n" "$timestr" "$summary"
 }
 list_cmd() {
     sync=false
